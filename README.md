@@ -1,0 +1,20 @@
+# Drives
+
+Albert plugin to mount, unmount and safely remove drives, e.g. USB sticks, external disks or optical media.
+
+- Lists the drives that are not part of the system, with their state (mounted, not mounted, locked).
+- Mount and open, unmount, copy the mount path.
+- Encrypted (LUKS) volumes: unlock with a passphrase and mount, lock.
+- Safely remove: unmounts and locks all volumes of the drive, then powers it off or ejects the medium.
+
+Search by name, label, drive model or device, or use the trigger `drive `.
+
+## Platforms
+
+Linux using UDisks2, independent of the desktop environment. Permissions are handled by polkit, in an active session usually without a password.
+
+The platform specific part is a small backend interface (`src/backend.h`), so other platforms, e.g. macOS using DiskArbitration, can be added.
+
+## Build
+
+The plugin is built as part of the Albert source tree. Clone it into `plugins/drives` and build Albert as usual. Requires Qt DBus and Widgets.
