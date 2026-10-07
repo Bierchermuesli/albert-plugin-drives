@@ -4,6 +4,7 @@
 #include "udisksbackend.h"
 #include <QInputDialog>
 #include <QLocale>
+#include <QStorageInfo>
 #include <QTimer>
 #include <albert/icon.h>
 #include <albert/logging.h>
@@ -19,6 +20,9 @@ using namespace std;
 
 namespace {
 
+QString formatSize(qint64 bytes)
+{ return QLocale().formattedDataSize(bytes, 1, QLocale::DataSizeSIFormat); }
+
 void notify(const QString &title, const QString &text)
 {
     auto *n = new Notification(title, text);
@@ -30,14 +34,21 @@ QString volumeName(const Volume &v)
 {
     if (!v.label.isEmpty())
         return v.label;
-    const auto size = QLocale().formattedDataSize(qint64(v.size), 1, QLocale::DataSizeSIFormat);
+    const auto size = formatSize(qint64(v.size));
     return v.drive.isEmpty() ? size : u"%1 %2"_s.arg(size, v.drive);
 }
 
 QString volumeState(const Volume &v)
 {
     if (!v.mount_points.isEmpty())
-        return u"Mounted at %1"_s.arg(v.mount_points.constFirst());
+    {
+        const auto &path = v.mount_points.constFirst();
+        if (const QStorageInfo storage(path); storage.isValid() && storage.bytesTotal() > 0)
+            return u"Mounted at %1 · %2 free of %3"_s.arg(path,
+                                                          formatSize(storage.bytesAvailable()),
+                                                          formatSize(storage.bytesTotal()));
+        return u"Mounted at %1"_s.arg(path);
+    }
     if (v.encrypted && !v.unlocked)
         return u"Encrypted, locked"_s;
     return u"Not mounted"_s;
@@ -81,7 +92,10 @@ vector<Action> actions(const shared_ptr<Backend> &backend, const Volume &v)
         actions.push_back({u"open"_s, u"Open"_s, [path]{ albert::open(path); }});
         actions.push_back({u"copy"_s, u"Copy path"_s, [path]{ setClipboardText(path); }});
         actions.push_back({u"unmount"_s, u"Unmount"_s,
-                           [=]{ backend->unmount(v, report(u"Unmount"_s, n)); }});
+                           [=]{ backend->unmount(v, false, report(u"Unmount"_s, n)); }});
+        // Lazy unmount, detaches the filesystem even if programs still use it
+        actions.push_back({u"forceunmount"_s, u"Force unmount"_s,
+                           [=]{ backend->unmount(v, true, report(u"Force unmount"_s, n)); }});
     }
     else if (v.encrypted && !v.unlocked)
     {

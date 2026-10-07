@@ -44,7 +44,8 @@ public:
     virtual std::vector<Volume> volumes() = 0;
 
     virtual void mount(const Volume &volume, Callback done) = 0;
-    virtual void unmount(const Volume &volume, Callback done) = 0;
+    /// Unmounts the volume. _force_ detaches it even if it is busy (lazy unmount).
+    virtual void unmount(const Volume &volume, bool force, Callback done) = 0;
 
     /// Unlocks an encrypted volume and mounts it.
     virtual void unlockAndMount(const Volume &volume, const QString &passphrase,

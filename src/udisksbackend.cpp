@@ -6,6 +6,9 @@
 #include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QMap>
 #include <QTimer>
 #include <albert/logging.h>
@@ -135,6 +138,56 @@ void mountWithRetry(const QString &path, int attempts, Backend::Callback done)
     });
 }
 
+// Returns the names of the processes using files below _mount_point_. Only processes of the
+// current user are visible, but those are the ones the user can close anyway.
+QStringList blockingProcesses(const QString &mount_point)
+{
+    const auto prefix = mount_point.endsWith(u'/') ? mount_point : mount_point + u'/';
+    auto below = [&](const QString &path) { return path == mount_point || path.startsWith(prefix); };
+
+    QStringList names;
+    for (const auto &pid : QDir(u"/proc"_s).entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+    {
+        if (!pid.front().isDigit())
+            continue;
+
+        const QDir proc(u"/proc/"_s + pid);
+        bool uses = below(QFileInfo(proc.filePath(u"cwd"_s)).symLinkTarget());
+        if (!uses)
+            for (const auto &fd : QDir(proc.filePath(u"fd"_s)).entryInfoList(QDir::System))
+                if (below(fd.symLinkTarget()))
+                {
+                    uses = true;
+                    break;
+                }
+
+        if (uses)
+            if (QFile comm(proc.filePath(u"comm"_s)); comm.open(QIODevice::ReadOnly))
+                if (const auto name = QString::fromUtf8(comm.readAll()).trimmed();
+                    !names.contains(name))
+                    names << name;
+    }
+    return names;
+}
+
+// Unmounts the filesystem at _path_. If it is busy, the error names the blocking processes.
+void unmountFilesystem(const QString &path, const QString &mount_point, bool force,
+                       function<void(const QString &error)> done)
+{
+    QVariantMap options;
+    if (force)
+        options.insert(u"force"_s, true);
+
+    call(path, filesystem_iface, u"Unmount"_s, {options},
+         [=](const QString &error, const QDBusMessage &) {
+        if (error.isEmpty() || !error.contains(u"busy"_s))
+            return done(error);
+        const auto processes = blockingProcesses(mount_point);
+        done(processes.isEmpty() ? error
+                                 : u"The drive is used by: %1"_s.arg(processes.join(u", "_s)));
+    });
+}
+
 using Step = function<void(function<void(const QString &error)> next)>;
 
 void runSteps(shared_ptr<vector<Step>> steps, size_t index, Backend::Callback done)
@@ -231,11 +284,11 @@ void UDisksBackend::mount(const Volume &volume, Callback done)
     mountWithRetry(path, 1, done);
 }
 
-void UDisksBackend::unmount(const Volume &volume, Callback done)
+void UDisksBackend::unmount(const Volume &volume, bool force, Callback done)
 {
     const auto path = filesystemPath(managedObjects(), volume.id);
-    call(path, filesystem_iface, u"Unmount"_s, {QVariantMap{}},
-         [done](const QString &error, const QDBusMessage &) { done(error, {}); });
+    unmountFilesystem(path, volume.mount_points.value(0), force,
+                      [done](const QString &error) { done(error, {}); });
 }
 
 void UDisksBackend::unlockAndMount(const Volume &volume, const QString &passphrase, Callback done)
@@ -253,7 +306,7 @@ void UDisksBackend::lock(const Volume &volume, Callback done)
     auto steps = make_shared<vector<Step>>();
     if (!volume.mount_points.isEmpty())
         steps->push_back([this, volume](auto next) {
-            unmount(volume, [next](const QString &error, const QString &) { next(error); });
+            unmount(volume, false, [next](const QString &error, const QString &) { next(error); });
         });
     steps->push_back([=](auto next) {
         call(volume.id, encrypted_iface, u"Lock"_s, {QVariantMap{}},
@@ -282,11 +335,11 @@ void UDisksBackend::safelyRemove(const Volume &volume, Callback done)
 
         const auto path = it.key();
         const auto fs = filesystemPath(objects, path);
-        if (fs != u"/"_s
-            && !mountPoints(objects.value(fs).value(filesystem_iface).value(u"MountPoints"_s)).isEmpty())
-            steps->push_back([fs](auto next) {
-                call(fs, filesystem_iface, u"Unmount"_s, {QVariantMap{}},
-                     [next](const QString &error, const QDBusMessage &) { next(error); });
+        const auto points = fs == u"/"_s ? QStringList{}
+            : mountPoints(objects.value(fs).value(filesystem_iface).value(u"MountPoints"_s));
+        if (!points.isEmpty())
+            steps->push_back([fs, point = points.constFirst()](auto next) {
+                unmountFilesystem(fs, point, false, next);
             });
 
         if (it.value().contains(encrypted_iface) && fs != u"/"_s)

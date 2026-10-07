@@ -3,7 +3,8 @@
 Albert plugin to mount, unmount and safely remove drives, e.g. USB sticks, external disks or optical media.
 
 - Lists the drives that are not part of the system, with their state (mounted, not mounted, locked).
-- Mount and open, unmount, copy the mount path.
+- Mount and open, unmount, copy the mount path. Shows the free space of mounted drives.
+- Force unmount (lazy) for busy drives. If unmounting fails because the drive is busy, the error names the programs using it.
 - Encrypted (LUKS) volumes: unlock with a passphrase and mount, lock.
 - Safely remove: unmounts and locks all volumes of the drive, then powers it off or ejects the medium.
 
