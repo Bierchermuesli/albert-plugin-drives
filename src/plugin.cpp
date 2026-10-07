@@ -127,7 +127,7 @@ Plugin::Plugin() : backend_(make_shared<UDisksBackend>()) {}
 
 Plugin::~Plugin() = default;
 
-QString Plugin::defaultTrigger() const { return u"drive "_s; }
+QString Plugin::defaultTrigger() const { return u"mount "_s; }
 
 vector<RankItem> Plugin::rankItems(QueryContext &ctx)
 {

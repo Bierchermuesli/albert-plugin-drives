@@ -7,7 +7,7 @@ Albert plugin to mount, unmount and safely remove drives, e.g. USB sticks, exter
 - Encrypted (LUKS) volumes: unlock with a passphrase and mount, lock.
 - Safely remove: unmounts and locks all volumes of the drive, then powers it off or ejects the medium.
 
-Search by name, label, drive model or device, or use the trigger `drive `.
+Search by name, label, drive model or device, or use the trigger `mount `.
 
 ## Platforms
 
