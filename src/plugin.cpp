@@ -88,7 +88,9 @@ vector<Action> actions(const shared_ptr<Backend> &backend, const Volume &v)
         auto unlock = [=](bool open_after) {
             bool ok = false;
             const auto passphrase = QInputDialog::getText(
-                nullptr, u"Unlock %1"_s.arg(n), u"Passphrase for %1 (%2):"_s.arg(n, v.device),
+                nullptr, u"Unlock %1"_s.arg(n), u"Passphrase for %1 (%2):\n\n"
+                u"The passphrase is passed directly to UDisks2 to unlock the drive.\n"
+                u"Albert does not store it."_s.arg(n, v.device),
                 QLineEdit::Password, {}, &ok);
             if (ok)
                 backend->unlockAndMount(v, passphrase, report(u"Unlock"_s, n, open_after));
